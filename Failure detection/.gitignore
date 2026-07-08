@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.env
+venv/
+.venv/
+data/incidents.db
+data/chroma/
+*.egg-info/
+dist/
+build/
+.DS_Store
