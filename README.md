@@ -120,6 +120,4 @@ docker-compose up --build
 
 High/Critical risk incidents pause at **Awaiting Approval** in the dashboard. Engineers approve or reject remediation before execution.
 
-## License
 
-Academic project — MIT
