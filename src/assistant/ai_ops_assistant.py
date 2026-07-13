@@ -14,10 +14,20 @@ from src.database.store import IncidentRepository
 from src.rag.knowledge_base import KnowledgeBase
 
 
+INCIDENT_ID_RE = re.compile(r"INC-[A-Za-z0-9]{4,}")
+
+
 class AIOpsAssistant:
     SYSTEM_PROMPT = """You are an AI Operations Assistant for an incident management platform.
 Answer questions about incidents using the provided context from audit logs, historical data, and runbooks.
-Be concise, accurate, and reference specific incident IDs when relevant.
+Be accurate and reference specific incident IDs when relevant.
+
+Format every response in Markdown as follows:
+- Use a short bold header per incident or topic, e.g. **INC-1234 — Auth Service**.
+- Under each header, use bullet points for facts (root cause, action taken, verification).
+- Use nested sub-bullets (indented `-`) for supporting detail, e.g. prevention steps or runbook references.
+- End with a **Prevention** section summarizing concrete, actionable steps.
+- Never truncate mid-sentence; keep the full answer within the response.
 """
 
     def __init__(
@@ -37,11 +47,13 @@ Be concise, accurate, and reference specific incident IDs when relevant.
                 model=self.settings.groq_model,
                 api_key=self.settings.groq_api_key,
                 temperature=0.2,
+                max_tokens=1536,
             )
         return self._llm
 
     def ask(self, question: str) -> str:
-        context = self._build_context(question)
+        parts = self._build_context(question)
+        context = "\n".join(parts) if parts else "No incident data available."
 
         if self.llm:
             try:
@@ -53,15 +65,23 @@ Be concise, accurate, and reference specific incident IDs when relevant.
                 )
                 return response.content
             except Exception as e:
-                return f"LLM error: {e}\n\nFallback answer:\n{self._rule_based_answer(question, context)}"
+                return f"**LLM error:** {e}\n\n{self._rule_based_answer(question, parts)}"
 
-        return self._rule_based_answer(question, context)
+        return self._rule_based_answer(question, parts)
 
-    def _build_context(self, question: str) -> str:
+    def _build_context(self, question: str) -> list[str]:
         parts = []
 
-        incidents = self.repository.search_incidents(question, limit=5)
-        if not incidents:
+        requested_ids = {m.upper() for m in INCIDENT_ID_RE.findall(question)}
+        incidents = [
+            inc
+            for inc in (self.repository.get_incident(iid) for iid in requested_ids)
+            if inc is not None
+        ]
+
+        if not incidents and not requested_ids:
+            incidents = self.repository.search_incidents(question, limit=5)
+        if not incidents and not requested_ids:
             incidents = self.repository.list_incidents(limit=5)
 
         for inc in incidents:
@@ -72,30 +92,42 @@ Be concise, accurate, and reference specific incident IDs when relevant.
                 f"Verified: {inc.verification_passed}"
             )
 
-        rag = self.knowledge_base.vector_store.search_all(question, n_results=2)
+        rag_query = incidents[0].root_cause if incidents else question
+        rag = self.knowledge_base.vector_store.search_all(rag_query, n_results=2)
         for category, docs in rag.items():
             for doc in docs:
-                parts.append(f"[{category}] {doc.get('document', '')[:200]}")
+                parts.append(f"[{category}] {doc.get('document', '')[:500]}")
 
-        feedback = self.repository.get_feedback_history(limit=3)
-        for fb in feedback:
-            parts.append(f"Feedback {fb.incident_id}: {fb.outcome} - {fb.lessons_learned[:100]}")
+        if not requested_ids:
+            feedback = self.repository.get_feedback_history(limit=3)
+            for fb in feedback:
+                parts.append(f"Feedback {fb.incident_id}: {fb.outcome} - {fb.lessons_learned[:100]}")
 
-        return "\n".join(parts) if parts else "No incident data available."
+        return list(dict.fromkeys(parts))
 
-    def _rule_based_answer(self, question: str, context: str) -> str:
+    def _rule_based_answer(self, question: str, parts: list[str]) -> str:
+        if not parts:
+            return "No incident data available yet."
+
         q = question.lower()
 
         if "similar" in q:
-            return f"Based on RAG search:\n{context[:1000]}"
-        if "escalat" in q:
-            return (
-                "Incidents are escalated when risk is High/Critical, confidence is below 50%, "
-                "verification fails repeatedly, or conflicting evidence exists.\n\n" + context[:500]
+            header = "**Based on RAG search:**"
+        elif "escalat" in q:
+            header = (
+                "**Escalation criteria:**\n"
+                "- Risk is High/Critical\n"
+                "- Confidence is below 50%\n"
+                "- Verification fails repeatedly\n"
+                "- Conflicting evidence exists\n\n"
+                "**Related incidents:**"
             )
-        if "action" in q and "execut" in q:
-            return f"Executed actions from recent incidents:\n{context[:800]}"
-        if "cause" in q or "outage" in q:
-            return f"Recent root causes:\n{context[:800]}"
+        elif "action" in q and "execut" in q:
+            header = "**Executed actions from recent incidents:**"
+        elif "cause" in q or "outage" in q:
+            header = "**Recent root causes:**"
+        else:
+            header = "**Here's what I found:**"
 
-        return f"Here's what I found:\n{context[:1200]}"
+        bullets = "\n".join(f"- {p}" for p in parts[:8])
+        return f"{header}\n{bullets}"

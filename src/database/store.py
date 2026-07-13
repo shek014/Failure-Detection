@@ -286,7 +286,8 @@ class IncidentRepository:
             records = (
                 session.query(IncidentRecord)
                 .filter(
-                    (IncidentRecord.affected_service.ilike(pattern))
+                    (IncidentRecord.id.ilike(pattern))
+                    | (IncidentRecord.affected_service.ilike(pattern))
                     | (IncidentRecord.anomaly_type.ilike(pattern))
                     | (IncidentRecord.root_cause.ilike(pattern))
                     | (IncidentRecord.summary.ilike(pattern))

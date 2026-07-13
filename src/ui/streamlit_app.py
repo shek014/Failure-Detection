@@ -344,7 +344,7 @@ def render_assistant():
             answer = get_assistant().ask(q)
         with st.container(border=True):
             st.markdown("#### Answer")
-            st.write(answer)
+            st.markdown(answer)
 
 
 def main():
