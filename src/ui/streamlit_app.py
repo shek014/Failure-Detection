@@ -24,6 +24,50 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+CUSTOM_CSS = """
+<style>
+.block-container { padding-top: 1.75rem; padding-bottom: 3rem; max-width: 1600px; }
+
+/* Narrower sidebar, more room for content */
+[data-testid="stSidebar"] { min-width: 230px !important; max-width: 230px !important; }
+
+/* Native sidebar nav (st.navigation) */
+[data-testid="stSidebarNav"] { padding-top: 0.5rem; }
+[data-testid="stSidebarNavLink"] {
+    border-radius: 8px !important;
+    margin: 0.1rem 0 !important;
+    font-weight: 500;
+    font-size: 1rem;
+}
+[data-testid="stSidebarNavLink"]:hover { background-color: rgba(99, 102, 241, 0.10) !important; }
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+    background-color: rgba(99, 102, 241, 0.16) !important;
+    font-weight: 700;
+}
+
+/* Main content polish */
+.app-header h1 { font-size: 2.4rem; margin-bottom: 0; }
+.app-header p { opacity: 0.65; margin-top: 0.15rem; font-size: 1.05rem; }
+
+[data-testid="stMetric"] {
+    background: rgba(127, 127, 127, 0.06);
+    border-radius: 12px;
+    padding: 1.1rem 1.3rem 0.9rem 1.3rem;
+}
+[data-testid="stMetricValue"] { font-size: 2.4rem; }
+[data-testid="stMetricLabel"] { font-size: 1rem; }
+
+h3 { font-size: 1.6rem !important; }
+
+.stButton > button {
+    border-radius: 8px;
+    padding: 0.65rem 1.4rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+</style>
+"""
+
 STATUS_BADGE = {
     "resolved": ("green", "✅"),
     "escalated": ("red", "🚨"),
@@ -349,32 +393,27 @@ def render_assistant():
 
 def main():
     init_session()
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    st.title("🛡️ Intelligent Incident Resolution Agent")
-    st.caption("Agentic AI • LangGraph • RAG • MCP • Human-in-the-Loop")
+    pages = [
+        st.Page(render_dashboard, title="Dashboard", icon="📊", default=True),
+        st.Page(render_detect, title="Detect Anomaly", icon="🔍"),
+        st.Page(render_incident_detail, title="Incident Detail", icon="📄"),
+        st.Page(render_assistant, title="AI Assistant", icon="💬"),
+    ]
+    pg = st.navigation(pages)
 
-    page = st.sidebar.radio(
-        "Navigation",
-        ["📊 Dashboard", "🔍 Detect Anomaly", "📄 Incident Detail", "💬 AI Assistant"],
+    st.markdown(
+        """
+        <div class="app-header">
+            <h1 style="margin-bottom:0;">🛡️ Intelligent Incident Resolution Agent</h1>
+            <p>Agentic AI • LangGraph • RAG • MCP • Human-in-the-Loop</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**Agent Pipeline**")
-    with st.sidebar.container(border=True):
-        st.markdown(
-            "Detection → Orchestrator → RAG → Context\n\n"
-            "→ RCA → Risk → Decision → Resolution\n\n"
-            "→ Verification → Notification → Feedback"
-        )
-
-    if page == "📊 Dashboard":
-        render_dashboard()
-    elif page == "🔍 Detect Anomaly":
-        render_detect()
-    elif page == "📄 Incident Detail":
-        render_incident_detail()
-    elif page == "💬 AI Assistant":
-        render_assistant()
+    pg.run()
 
 
 if __name__ == "__main__":
